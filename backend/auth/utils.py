@@ -1,5 +1,10 @@
 import bcrypt
 import secrets
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from backend.database.db import get_db
+from backend.database.models import User, UserSession
 
 def get_password_hash(password: str) -> str:
     """Converts a plain text password into a secure bcrypt hash string."""
@@ -23,3 +28,31 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_session_token() -> str:
     """Generates a secure, random 64-character string to act as a session token."""
     return secrets.token_hex(32)
+
+# This tells FastAPI to look for a "Bearer" token in the web request headers
+security_scheme = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme), 
+    db: Session = Depends(get_db)
+) -> User:
+    """The Security Guard: Checks the token and returns the logged-in user."""
+    
+    # 1. Grab the token string from the request
+    token = credentials.credentials
+    
+    # 2. Look up the token in our database
+    session_record = db.query(UserSession).filter(UserSession.token == token).first()
+    
+    # 3. If it doesn't exist, kick them out
+    if not session_record:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+        
+    # 4. If it does exist, find the User it belongs to
+    user = db.query(User).filter(User.id == session_record.user_id).first()
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="User no longer exists")
+        
+    # 5. Let them in! Hand the user data to the next step.
+    return user
