@@ -1,5 +1,6 @@
 import bcrypt
 import secrets
+import hashlib
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -29,6 +30,10 @@ def create_session_token() -> str:
     """Generates a secure, random 64-character string to act as a session token."""
     return secrets.token_hex(32)
 
+def hash_token(token: str) -> str:
+    """Hashes a session token using SHA-256 for secure database storage."""
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
 # This tells FastAPI to look for a "Bearer" token in the web request headers
 security_scheme = HTTPBearer()
 
@@ -38,11 +43,12 @@ def get_current_user(
 ) -> User:
     """The Security Guard: Checks the token and returns the logged-in user."""
     
-    # 1. Grab the token string from the request
+    # 1. Grab the token string from the request and hash it
     token = credentials.credentials
+    hashed = hash_token(token)
     
     # 2. Look up the token in our database
-    session_record = db.query(UserSession).filter(UserSession.token == token).first()
+    session_record = db.query(UserSession).filter(UserSession.token == hashed).first()
     
     # 3. If it doesn't exist, kick them out
     if not session_record:

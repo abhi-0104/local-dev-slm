@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from backend.database.db import get_db
 from backend.database.models import User, UserSession # <-- Added UserSession
 from backend.auth.models import UserCreate, UserLogin, TokenResponse, LogoutRequest
-from backend.auth.utils import get_password_hash, verify_password, create_session_token # <-- Added verify & create
+from backend.auth.utils import get_password_hash, verify_password, create_session_token, hash_token # <-- Added verify & create & hash
 
 # Create our "mini-app" for authentication
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -42,7 +42,8 @@ def login_user(user_data: UserLogin, db: Session = Depends(get_db)):
     new_token = create_session_token()
     
     # 4. Save the VIP Pass to the database so we remember them
-    session_record = UserSession(user_id=user.id, token=new_token)
+    hashed_token = hash_token(new_token)
+    session_record = UserSession(user_id=user.id, token=hashed_token)
     db.add(session_record)
     db.commit()
     
@@ -54,7 +55,8 @@ def logout_user(request: LogoutRequest, db: Session = Depends(get_db)):
     """Deletes a session token from the database, logging the user out."""
     
     # 1. Find the token in the sessions table
-    session_record = db.query(UserSession).filter(UserSession.token == request.token).first()
+    hashed_incoming = hash_token(request.token)
+    session_record = db.query(UserSession).filter(UserSession.token == hashed_incoming).first()
     
     # 2. If it exists, delete it
     if session_record:
